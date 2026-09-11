@@ -16,6 +16,7 @@ interface CigaretteStickProps {
   onInhaleStart: () => void;
   onInhaleEnd: () => void;
   onExtinguish: () => void;
+  isDragging?: boolean;
 }
 
 export const CigaretteStick: React.FC<CigaretteStickProps> = ({
@@ -30,7 +31,8 @@ export const CigaretteStick: React.FC<CigaretteStickProps> = ({
   onFlickAsh,
   onInhaleStart,
   onInhaleEnd,
-  onExtinguish
+  onExtinguish,
+  isDragging = false
 }) => {
   const tipRef = useRef<HTMLDivElement | null>(null);
 
@@ -238,6 +240,19 @@ export const CigaretteStick: React.FC<CigaretteStickProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Unlit State Drag Hint */}
+      {!isLit && (
+        <div className="mt-3 text-center pointer-events-none">
+          <span className={`text-[10px] px-2.5 py-0.5 rounded-full border transition-all ${
+            isDragging
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+              : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60'
+          }`}>
+            {isDragging ? '正在拖动香烟靠近火苗...' : '可拖动烟身点燃'}
+          </span>
+        </div>
+      )}
 
       {/* Inhale / Draw Action Trigger (Press & hold or click to draw) */}
       {isLit && (

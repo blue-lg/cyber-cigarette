@@ -11,7 +11,9 @@ import {
   ShieldAlert,
   Sliders,
   Award,
-  ChevronDown
+  ChevronDown,
+  Move,
+  Zap
 } from 'lucide-react';
 import { Cigarette, LighterConfig } from './types';
 import { CIGARETTES_DATA, LIGHTER_MODELS } from './data/cigarettes';
@@ -42,6 +44,19 @@ export default function App() {
   const [beadPopped, setBeadPopped] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
+  // Dragging states
+  const [lighterDrag, setLighterDrag] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDraggingLighter, setIsDraggingLighter] = useState(false);
+  const lighterPointerStartRef = useRef<{ pointerX: number; pointerY: number; startX: number; startY: number } | null>(null);
+  const lighterMovedRef = useRef(false);
+
+  const [cigDrag, setCigDrag] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDraggingCig, setIsDraggingCig] = useState(false);
+  const cigPointerStartRef = useRef<{ pointerX: number; pointerY: number; startX: number; startY: number } | null>(null);
+  const cigMovedRef = useRef(false);
+
+  const [justIgnited, setJustIgnited] = useState(false);
+
   // Tilt & Gravity
   const [tiltAngle, setTiltAngle] = useState(0); // in degrees (-45 to 45)
 
@@ -69,6 +84,7 @@ export default function App() {
     setAshLength(0);
     setIsInhaling(false);
     setBeadPopped(false);
+    setJustIgnited(false);
     soundEngine.stopInhaleCrackle();
   };
 
@@ -106,6 +122,148 @@ export default function App() {
     setIsInhaling(false);
     soundEngine.stopInhaleCrackle();
     soundEngine.playExhaleSmoke();
+  };
+
+  // Trigger ignition helper
+  const triggerIgnition = useCallback(() => {
+    if (isCigaretteLit) return;
+    setIsCigaretteLit(true);
+    setJustIgnited(true);
+    const isKretek = selectedCigarette.type === '丁香型';
+    soundEngine.playIgnite(isKretek);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate([80, 50, 150]);
+    }
+    setTimeout(() => {
+      setJustIgnited(false);
+    }, 2200);
+  }, [isCigaretteLit, selectedCigarette]);
+
+  // Quick light lighter
+  const handleQuickStrikeLighter = () => {
+    if (!isLighterOpen) {
+      setIsLighterOpen(true);
+      soundEngine.playLighterOpen();
+    }
+    soundEngine.playLighterSpark();
+    setTimeout(() => {
+      setIsLighterLit(true);
+      soundEngine.startFlameHiss();
+    }, 120);
+  };
+
+  // Pointer drag for Lighter
+  const handleLighterPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('#flint-wheel-button') || target.closest('#lighter-picker-popover') || target.closest('#open-picker-btn')) {
+      return;
+    }
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    lighterPointerStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: lighterDrag.x,
+      startY: lighterDrag.y
+    };
+    lighterMovedRef.current = false;
+  };
+
+  const handleLighterPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!lighterPointerStartRef.current) return;
+    const dx = e.clientX - lighterPointerStartRef.current.pointerX;
+    const dy = e.clientY - lighterPointerStartRef.current.pointerY;
+
+    if (!lighterMovedRef.current && Math.hypot(dx, dy) > 5) {
+      lighterMovedRef.current = true;
+      setIsDraggingLighter(true);
+    }
+
+    if (lighterMovedRef.current) {
+      const nextX = Math.max(-360, Math.min(120, lighterPointerStartRef.current.startX + dx));
+      const nextY = Math.max(-220, Math.min(200, lighterPointerStartRef.current.startY + dy));
+      setLighterDrag({ x: nextX, y: nextY });
+    }
+  };
+
+  const handleLighterPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!lighterPointerStartRef.current) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    if (lighterMovedRef.current) {
+      setIsDraggingLighter(false);
+      // Spring back to resting dock
+      setLighterDrag({ x: 0, y: 0 });
+    } else {
+      // Tap on lighter: toggle lid
+      const target = e.target as HTMLElement;
+      if (target.closest('#lighter-lid') || target.closest('#lighter-body')) {
+        if (isLighterOpen) {
+          if (isLighterLit) {
+            setIsLighterLit(false);
+            soundEngine.stopFlameHiss();
+          }
+          soundEngine.playLighterClose();
+          setIsLighterOpen(false);
+        } else {
+          soundEngine.playLighterOpen();
+          setIsLighterOpen(true);
+        }
+      }
+    }
+    lighterPointerStartRef.current = null;
+    lighterMovedRef.current = false;
+  };
+
+  // Pointer drag for Cigarette
+  const handleCigPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isCigaretteLit || e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    cigPointerStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: cigDrag.x,
+      startY: cigDrag.y
+    };
+    cigMovedRef.current = false;
+  };
+
+  const handleCigPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cigPointerStartRef.current) return;
+    const dx = e.clientX - cigPointerStartRef.current.pointerX;
+    const dy = e.clientY - cigPointerStartRef.current.pointerY;
+
+    if (!cigMovedRef.current && Math.hypot(dx, dy) > 5) {
+      cigMovedRef.current = true;
+      setIsDraggingCig(true);
+    }
+
+    if (cigMovedRef.current) {
+      const nextX = Math.max(-100, Math.min(360, cigPointerStartRef.current.startX + dx));
+      const nextY = Math.max(-200, Math.min(200, cigPointerStartRef.current.startY + dy));
+      setCigDrag({ x: nextX, y: nextY });
+    }
+  };
+
+  const handleCigPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cigPointerStartRef.current) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+    if (cigMovedRef.current) {
+      setIsDraggingCig(false);
+      setCigDrag({ x: 0, y: 0 });
+    }
+    cigPointerStartRef.current = null;
+    cigMovedRef.current = false;
   };
 
   // Burning simulation ticker
@@ -155,8 +313,8 @@ export default function App() {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     // Ignition threshold radius in px
-    const maxIgniteDistance = 140;
-    const contactDistance = 55;
+    const maxIgniteDistance = 150;
+    const contactDistance = 58;
 
     if (dist > maxIgniteDistance) {
       setProximityScore(0);
@@ -164,7 +322,7 @@ export default function App() {
     } else if (dist > contactDistance) {
       const score = Math.max(
         0,
-        Math.min(90, (1 - (dist - contactDistance) / (maxIgniteDistance - contactDistance)) * 90)
+        Math.min(95, (1 - (dist - contactDistance) / (maxIgniteDistance - contactDistance)) * 95)
       );
       setProximityScore(score);
       contactDurationRef.current = 0;
@@ -173,17 +331,23 @@ export default function App() {
       setProximityScore(100);
       contactDurationRef.current += 1;
 
-      // When in contact for ~3 ticks (~150ms)
-      if (contactDurationRef.current >= 3) {
-        setIsCigaretteLit(true);
-        const isKretek = selectedCigarette.type === '丁香型';
-        soundEngine.playIgnite(isKretek);
-        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          navigator.vibrate([60, 40, 120]);
-        }
+      // Snappy contact ignition
+      if (contactDurationRef.current >= 1) {
+        triggerIgnition();
       }
     }
-  }, [flamePos, tipPos, isLighterLit, isCigaretteLit, selectedCigarette]);
+  }, [flamePos, tipPos, isLighterLit, isCigaretteLit, triggerIgnition]);
+
+  // Dynamic calculations for Lighter & Cigarette
+  const dragTilt = Math.max(-25, Math.min(15, (lighterDrag.x / 140) * 22));
+  const lighterTotalX = -tiltAngle * 3.5 + lighterDrag.x;
+  const lighterTotalY = Math.abs(tiltAngle) * 0.8 + lighterDrag.y;
+  const lighterTotalRotate = tiltAngle * 0.75 + dragTilt;
+
+  const cigDragTilt = Math.max(-10, Math.min(20, (cigDrag.x / 140) * 16));
+  const cigTotalX = cigDrag.x;
+  const cigTotalY = cigDrag.y;
+  const cigTotalRotate = cigDragTilt;
 
   // Shake detection on mobile (DeviceMotion) for flicking ash
   useEffect(() => {
@@ -221,11 +385,6 @@ export default function App() {
       return () => window.removeEventListener('devicemotion', handleMotion);
     }
   }, [isCigaretteLit, ashLength, handleFlickAsh]);
-
-  // Calculate dynamic tilt displacement for the lighter
-  // Tilting right moves lighter leftward towards cigarette; tilting left moves lighter rightward
-  const lighterOffsetX = -tiltAngle * 3.5;
-  const lighterOffsetY = Math.abs(tiltAngle) * 0.8;
 
   return (
     <div
@@ -350,10 +509,110 @@ export default function App() {
           </p>
         </div>
 
+        {/* Drag to Ignite Instruction Banner */}
+        <div className="mb-3 px-3 py-1.5 rounded-full backdrop-blur-md transition-all flex items-center gap-2 text-xs border shadow-lg">
+          {justIgnited ? (
+            <div className="flex items-center gap-1.5 text-amber-300 font-bold animate-pulse">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>引燃成功！烟丝炽热，可长按香烟抽吸</span>
+            </div>
+          ) : isCigaretteLit ? (
+            <div className="flex items-center gap-2 text-zinc-300">
+              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+              <span>香烟燃烧中 · 可长按下方按钮深吸，或摇晃手机弹烟灰</span>
+            </div>
+          ) : isLighterLit ? (
+            <div className="flex items-center gap-2 text-amber-300">
+              <Move className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+              <span>
+                {isDraggingLighter || isDraggingCig
+                  ? `正在拖动靠拢 · 契合度 ${Math.round(proximityScore)}%`
+                  : '火苗已起：直接按住打火机拖动至烟头即可引燃！'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-zinc-300">
+              <Flame className="w-3.5 h-3.5 text-zinc-400" />
+              <span>点击砂轮打火后，按住打火机拖动靠近烟头点燃</span>
+              <button
+                type="button"
+                onClick={handleQuickStrikeLighter}
+                className="ml-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-bold border border-amber-500/40 cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+              >
+                <Zap className="w-3 h-3 text-amber-400" />
+                <span>一键打火</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Dynamic Drag Guide Arc & Trajectory Line */}
+        {isLighterLit && !isCigaretteLit && flamePos && tipPos && (
+          <svg
+            className="pointer-events-none fixed inset-0 z-30 w-full h-full"
+            style={{ overflow: 'visible' }}
+          >
+            <defs>
+              <linearGradient id="guide-flame-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#fbbf24" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity="0.8" />
+              </linearGradient>
+            </defs>
+            {/* Dashed line connecting flame and cigarette tip */}
+            <line
+              x1={flamePos.x}
+              y1={flamePos.y}
+              x2={tipPos.x}
+              y2={tipPos.y}
+              stroke="url(#guide-flame-grad)"
+              strokeWidth={proximityScore > 70 ? "3" : "1.5"}
+              strokeDasharray="5,5"
+              opacity={Math.max(0.35, proximityScore / 100)}
+            />
+            {/* Target reticle on cigarette tip */}
+            <circle
+              cx={tipPos.x}
+              cy={tipPos.y}
+              r={12 + (1 - Math.min(100, proximityScore) / 100) * 8}
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="3,3"
+              opacity="0.8"
+            />
+          </svg>
+        )}
+
+        {/* Celebration Flash Burst on Ignition */}
+        {justIgnited && tipPos && (
+          <div
+            className="fixed pointer-events-none z-50 flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
+            style={{ left: tipPos.x, top: tipPos.y }}
+          >
+            <div className="w-24 h-24 rounded-full bg-amber-400/30 blur-lg animate-ping" />
+            <div className="absolute w-12 h-12 rounded-full bg-orange-500/50 blur-md animate-pulse" />
+            <Sparkles className="w-8 h-8 text-amber-200 animate-spin" />
+          </div>
+        )}
+
         {/* Dual Interaction Arena: Cigarette & Dynamic Lighter */}
-        <div className="relative w-full max-w-lg min-h-[380px] flex items-center justify-center gap-12 sm:gap-16">
-          {/* Cigarette Stick */}
-          <div className="flex flex-col items-center">
+        <div className="relative w-full max-w-lg min-h-[380px] flex items-center justify-center gap-12 sm:gap-16 select-none touch-none">
+          {/* Cigarette Stick Container with touch & drag support */}
+          <div
+            onPointerDown={handleCigPointerDown}
+            onPointerMove={handleCigPointerMove}
+            onPointerUp={handleCigPointerUp}
+            onPointerCancel={handleCigPointerUp}
+            className={`flex flex-col items-center select-none ${
+              !isCigaretteLit ? 'cursor-grab active:cursor-grabbing' : ''
+            }`}
+            style={{
+              transform: `translate(${cigTotalX}px, ${cigTotalY}px) rotate(${cigTotalRotate}deg)`,
+              transition: isDraggingCig ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1)',
+              zIndex: isDraggingCig ? 40 : 20
+            }}
+          >
             <CigaretteStick
               cigarette={selectedCigarette}
               isLit={isCigaretteLit}
@@ -367,14 +626,21 @@ export default function App() {
               onInhaleStart={handleInhaleStart}
               onInhaleEnd={handleInhaleEnd}
               onExtinguish={() => setIsCigaretteLit(false)}
+              isDragging={isDraggingCig}
             />
           </div>
 
-          {/* Interactive Tiltable Lighter */}
+          {/* Interactive Draggable & Tiltable Lighter */}
           <div
-            className="transition-transform duration-75 ease-out"
+            onPointerDown={handleLighterPointerDown}
+            onPointerMove={handleLighterPointerMove}
+            onPointerUp={handleLighterPointerUp}
+            onPointerCancel={handleLighterPointerUp}
+            className="select-none cursor-grab active:cursor-grabbing relative"
             style={{
-              transform: `translate(${lighterOffsetX}px, ${lighterOffsetY}px) rotate(${tiltAngle * 0.75}deg)`
+              transform: `translate(${lighterTotalX}px, ${lighterTotalY}px) rotate(${lighterTotalRotate}deg)`,
+              transition: isDraggingLighter ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1)',
+              zIndex: isDraggingLighter ? 40 : 20
             }}
           >
             <Lighter
@@ -386,11 +652,13 @@ export default function App() {
               onExtinguish={() => setIsLighterLit(false)}
               tiltAngle={tiltAngle}
               onFlamePositionChange={setFlamePos}
+              isDragging={isDraggingLighter}
             />
 
             {/* Switch Lighter Model button */}
             <div className="mt-3 text-center">
               <button
+                id="open-picker-btn"
                 type="button"
                 onClick={() => setShowLighterPicker(!showLighterPicker)}
                 className="text-[10px] text-zinc-400 hover:text-amber-400 cursor-pointer underline flex items-center justify-center gap-1 mx-auto"
@@ -401,7 +669,10 @@ export default function App() {
 
               {/* Lighter switcher popover */}
               {showLighterPicker && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-0 mb-8 p-2 rounded-xl bg-zinc-900 border border-zinc-700 shadow-2xl z-50 flex flex-col gap-1 w-44">
+                <div
+                  id="lighter-picker-popover"
+                  className="absolute left-1/2 -translate-x-1/2 bottom-0 mb-8 p-2 rounded-xl bg-zinc-900 border border-zinc-700 shadow-2xl z-50 flex flex-col gap-1 w-44"
+                >
                   {LIGHTER_MODELS.map((lm) => (
                     <button
                       key={lm.id}

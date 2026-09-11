@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Flame, Sparkles } from 'lucide-react';
+import { Flame, Sparkles, Move } from 'lucide-react';
 import { LighterConfig } from '../types';
 import { soundEngine } from '../utils/audio';
 
@@ -23,7 +23,8 @@ export const Lighter: React.FC<LighterProps> = ({
   onIgnite,
   onExtinguish,
   tiltAngle,
-  onFlamePositionChange
+  onFlamePositionChange,
+  isDragging = false
 }) => {
   const [isSparking, setIsSparking] = useState(false);
   const flameTipRef = useRef<HTMLDivElement | null>(null);
@@ -43,7 +44,7 @@ export const Lighter: React.FC<LighterProps> = ({
           y: rect.top + rect.height / 2
         });
       }
-    }, 40);
+    }, 30);
 
     return () => clearInterval(interval);
   }, [isLit, isOpen, onFlamePositionChange]);
@@ -90,9 +91,14 @@ export const Lighter: React.FC<LighterProps> = ({
   const flameCounterTilt = -tiltAngle * 0.85;
 
   return (
-    <div className="relative flex flex-col items-center select-none" id="lighter-container">
+    <div
+      className={`relative flex flex-col items-center select-none touch-none ${
+        isDragging ? 'cursor-grabbing scale-105 filter drop-shadow-[0_20px_25px_rgba(245,158,11,0.25)]' : 'cursor-grab'
+      }`}
+      id="lighter-container"
+    >
       {/* Flame Container */}
-      <div className="relative h-28 w-20 flex items-end justify-center overflow-visible">
+      <div className="relative h-28 w-20 flex items-end justify-center overflow-visible pointer-events-none">
         {isLit && isOpen && (
           <div
             ref={flameTipRef}
@@ -132,7 +138,7 @@ export const Lighter: React.FC<LighterProps> = ({
       <div className="relative w-28 h-10 flex items-center justify-between px-3 z-20">
         {/* Windproof Chimney Holes */}
         <div
-          className="w-10 h-9 rounded-t-md flex flex-wrap gap-1 p-1 items-center justify-center border border-zinc-700 shadow-inner"
+          className="w-10 h-9 rounded-t-md flex flex-wrap gap-1 p-1 items-center justify-center border border-zinc-700 shadow-inner pointer-events-none"
           style={{ backgroundColor: '#27272a' }}
         >
           {[...Array(6)].map((_, i) => (
@@ -146,6 +152,7 @@ export const Lighter: React.FC<LighterProps> = ({
         <button
           id="flint-wheel-button"
           type="button"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={handleStrikeWheel}
           className={`group relative w-10 h-10 rounded-full border-2 border-zinc-600 bg-gradient-to-b from-zinc-600 via-zinc-800 to-zinc-900 shadow-lg cursor-pointer active:scale-95 active:rotate-45 transition-transform duration-100 flex items-center justify-center ${
             isOpen ? 'hover:ring-2 hover:ring-amber-400/50' : 'opacity-80'
@@ -157,7 +164,7 @@ export const Lighter: React.FC<LighterProps> = ({
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
           </div>
           {isOpen && !isLit && (
-            <span className="absolute -top-6 text-[10px] font-medium text-amber-400 whitespace-nowrap bg-zinc-900/90 px-2 py-0.5 rounded-full border border-amber-500/30 animate-bounce">
+            <span className="absolute -top-6 text-[10px] font-medium text-amber-400 whitespace-nowrap bg-zinc-900/95 px-2 py-0.5 rounded-full border border-amber-500/40 animate-bounce shadow-md">
               划动打火
             </span>
           )}
@@ -189,8 +196,7 @@ export const Lighter: React.FC<LighterProps> = ({
       {/* Lighter Main Body Case */}
       <div
         id="lighter-body"
-        onClick={handleLidClick}
-        className="relative w-32 h-36 rounded-b-xl border border-white/10 shadow-2xl flex flex-col justify-between p-3 overflow-hidden cursor-pointer active:brightness-95"
+        className="relative w-32 h-36 rounded-b-xl border border-white/10 shadow-2xl flex flex-col justify-between p-3 overflow-hidden active:brightness-95"
         style={{
           background: `linear-gradient(160deg, ${config.baseColor} 0%, #1e1b18 70%, ${config.baseColor} 100%)`,
           boxShadow: `0 10px 30px rgba(0,0,0,0.7), inset 0 1px 2px ${config.accentColor}60`
@@ -203,7 +209,7 @@ export const Lighter: React.FC<LighterProps> = ({
         <div className="absolute -left-1.5 top-0 w-3 h-6 rounded-r-md bg-zinc-400 border border-zinc-600 shadow" />
 
         {/* Brand engraved plaque */}
-        <div className="mt-2 text-center">
+        <div className="mt-2 text-center pointer-events-none">
           <div className="text-xs font-serif font-extrabold tracking-wider" style={{ color: config.accentColor }}>
             {config.name}
           </div>
@@ -212,8 +218,24 @@ export const Lighter: React.FC<LighterProps> = ({
           </div>
         </div>
 
+        {/* Drag to ignite pill handle indicator */}
+        <div className="my-1 flex items-center justify-center">
+          <div
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all shadow-sm ${
+              isDragging
+                ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-300 font-bold scale-105'
+                : isLit
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                : 'bg-zinc-800/80 text-zinc-300 border border-zinc-700/60'
+            }`}
+          >
+            <Move className="w-3 h-3" />
+            <span>{isDragging ? '正在拖动靠近...' : '按住拖动点火'}</span>
+          </div>
+        </div>
+
         {/* Bottom status stamp */}
-        <div className="flex items-center justify-between text-[9px] text-zinc-400 font-mono border-t border-white/10 pt-1">
+        <div className="flex items-center justify-between text-[9px] text-zinc-400 font-mono border-t border-white/10 pt-1 pointer-events-none">
           <span>{isLit ? 'FLAME ON' : 'READY'}</span>
           <span className="flex items-center gap-1">
             <Flame className={`w-3 h-3 ${isLit ? 'text-amber-400 animate-pulse' : 'text-zinc-500'}`} />
