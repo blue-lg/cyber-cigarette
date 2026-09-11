@@ -1,0 +1,6 @@
+{
+  "name": "全球烟草鉴赏与拟真点烟模拟器",
+  "description": "沉浸式拟真点火体验与世界名烟鉴赏平台，支持重力感应点火、物理火苗与烟丝燃烧特效、纯粹WebAudio音效合成、焦油数据与历史背景展示及社交分享卡片生成。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
